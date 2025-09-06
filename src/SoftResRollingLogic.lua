@@ -17,6 +17,26 @@ local make_roll = m.Types.make_roll
 
 local State = { AfterRoll = 1, TimerStopped = 2, ManualStop = 3 }
 
+CSRModData = CSRModData or {}
+
+local function csr_extract_item_name(msg)
+  if not msg then return "" end
+  local s, e = string.find(msg, "|c%x+|Hitem:%d+[:%d]*|h%[.-%]|h|r")
+  if s then
+    local link = string.sub(msg, s, e)
+    local a, b = string.find(link, "%[.-%]")
+    if a then return string.sub(link, a + 1, b - 1) end
+  end
+  return msg
+end
+
+local function csr_bonus_for(itemName, playerName)
+  local byItem = CSRModData[itemName]
+  if not byItem then return 0 end
+  local v = byItem[playerName]
+  if type(v) ~= "number" then return 0 end
+  return v
+end
 local function has_everyone_rolled( rollers, rolls )
   local rolled_player_names = {}
   map( rolls, function( roll ) rolled_player_names[ roll.player.name ] = true end )
@@ -242,8 +262,18 @@ function M.new(
     local sr_plus = player.sr_plus and string.format( " (+%d)", player.sr_plus ) or ""
     return string.format( "%s%s%s", player.name, roll_count, sr_plus )
   end
+  local function apply_csr_bonus_for_this_item()
+    -- Use the item link to extract the “[Name]” key CSRModData uses.
+    local item_name = csr_extract_item_name(item.link or item.name or "")
+    for _, p in ipairs(players) do
+      local bonus = csr_bonus_for(item_name, p.name)
+      -- store only positive bonuses so your UI stays clean
+      p.sr_plus = (bonus and bonus > 0) and bonus or nil
+    end
+  end
 
   local function start_rolling()
+    apply_csr_bonus_for_this_item()  -- <- set sr_plus per player for this item
     local count_str = item_count > 1 and string.format( "%sx", item_count ) or ""
     local x_rolls_win = item_count > 1 and string.format( ". %d top rolls win.", item_count ) or ""
     local ressed_by = m.prettify_table( map( players, format_name_with_rolls ) )
