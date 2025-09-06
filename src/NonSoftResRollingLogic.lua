@@ -66,7 +66,21 @@ function M.new(
   local tmog_threshold = config.tmog_roll_threshold()
   local tmog_rolling_enabled = config.tmog_rolling_enabled()
   local rey_roll_threshold = 101
-
+  -- -- Block Rey (101) if already a Rey winner
+  -- do
+  --   print(rey_roll_threshold)
+  --   print(m.ReyWinners.has)
+  --   print(m.ReyWinners)
+  --   print('here maybe?')
+  --   if max == rey_roll_threshold and m and m.ReyWinners and m.ReyWinners.has then
+  --     if m.ReyWinners.has(roller.name) then
+  --       chat.info(string.format("%s already has Rey this run. 101 roll ignored.", roller.name))
+  --       local rey_type = RollType.Rey
+  --       controller.roll_was_ignored(roller.name, roller.class, rey_type, roll, "Already Rey winner.")
+  --       return
+  --     end
+  --   end
+  -- end
   local function sort_rolls()
     local f = function( a, b )
       if a.roll == b.roll then
@@ -242,6 +256,28 @@ function M.new(
 
     return false
   end
+  -- Case-insensitive check whether a name is already in Rey winners.
+  local function rey_blocklist_has(name)
+    if not name or name == "" then return false end
+
+    -- Prefer the module API if available (normalizes internally).
+    if m and m.ReyWinners and m.ReyWinners.has then
+      if m.ReyWinners.has(name) then return true end
+    end
+
+    -- Fallback: look directly in SavedVariables (case-insensitive)
+    local list = ReyWinnersDB and ReyWinnersDB.names
+    if not list then return false end
+    local lname = string.lower( (string.gsub(name, "^%s*(.-)%s*$", "%1")) )
+    local n = (getn and getn(list)) or (table.getn and table.getn(list)) or 0
+    for i = 1, n do
+      local v = list[i]
+      if v and string.lower(v) == lname then
+        return true
+      end
+    end
+    return false
+  end
 
   ---@param roller Player
   ---@param roll number
@@ -257,11 +293,20 @@ function M.new(
     local roll_type = rey_roll and RollType.Rey or ms_roll and RollType.MainSpec or os_roll and RollType.OffSpec or RollType.Transmog
     local rollers   = rey_roll and reyspec_rollers or ms_roll and mainspec_rollers or os_roll and offspec_rollers or tmog_rollers
     local player = find_player( roller.name, rollers ) ---@type RollingPlayer
+        -- Block Rey (101) rolls if the player is already a Rey winner.
+    if max == rey_roll_threshold then
+      if rey_blocklist_has(roller.name) then
+        chat.info(string.format("%s already has Rey this run. 101 roll ignored.", roller.name))
+        controller.roll_was_ignored(roller.name, roller.class, RollType.Rey, roll, "Already Rey winner.")
+        return
+      end
+    end
     if player.rolls == 0 then
       chat.info( m.msg.rolls_exhausted( player.name, player.class, roll ) )
       controller.roll_was_ignored( roller.name, player.class, roll_type, roll, "Rolled too many times." )
       return
     end
+    
     -- NEW: hard-block double rolls across lanes
     local had_prev, prev_type = already_rolled_anywhere(player.name)
     if had_prev then
