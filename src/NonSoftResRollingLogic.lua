@@ -161,9 +161,53 @@ function M.new(
       end
       return result
     end
+    local function is_rey_roll(entry)
+      print(entry.roll_type)
+      if not entry then return false end
+      local REY = m.Types.RollType.Rey
+      -- Preferred: use explicit roll type (set by make_roll)
+      if entry.roll_type == REY then return true end
+      -- Fallbacks if type isn't set on entries:
+      --if entry.max == 101 or entry.roll_max == 101 then return true end
+      return false
+    end
 
     local top_roll_winner_count = count_top_roll_winners()
     local winner_rolls = take( all_rolls, top_roll_winner_count > item_count and top_roll_winner_count or item_count )
+    -- Add any Rey winners to the persisted list
+    -- do
+    --   if m and m.ReyWinners and m.ReyWinners.add_winner and getn(winner_rolls) > 0 then
+    --     print('stuff')
+    --     print(m)
+    --     print(m.ReyWinners)
+    --     local REY = m.Types.RollType.Rey
+    --     print(REY)
+    --     for i = 1, getn(winner_rolls) do
+    --       local w = winner_rolls[i]
+    --       print(w)
+    --       print(w.player.name)
+    --       if w and w.player.name then
+    --         m.ReyWinners.add_winner(w.player.name)
+    --         print('i work?')
+    --       end
+    --     end
+    --     -- Optional debug to confirm it fired:
+    --     -- DEFAULT_CHAT_FRAME:AddMessage("|cffffff00[ReyWinners]|r processed winners for " .. (item.link or "?"))
+    --   end
+    -- end
+-- Add only Rey winners to the persisted list
+    do
+      if m and m.ReyWinners and m.ReyWinners.add_winner and getn(winner_rolls) > 0 then
+        for i = 1, getn(winner_rolls) do
+          local w = winner_rolls[i]
+          print(w)
+          print(w.player)
+          if is_rey_roll(w) and w.player and w.player.name then
+            m.ReyWinners.add_winner(w.player.name)
+          end
+        end
+      end
+    end
 
     on_rolling_finished( item, item_count, winner_rolls )
   end
