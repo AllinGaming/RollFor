@@ -76,7 +76,11 @@ function RW.clear()
   RW.update_list_ui()
 end
 -- -----------------------------------
-
+-- Public: is this name already a Rey winner?
+function RW.has(name)
+  local n = normalize_name(name)
+  return (n and RW._set[n]) and true or false
+end
 -- -------------- UI -----------------
 local frame, edit, addBtn, rmBtn, listText
 local make  -- <- forward declaration so it's an upvalue
