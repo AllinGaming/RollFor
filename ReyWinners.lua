@@ -397,7 +397,7 @@ local function make_toggle_button()
     if toggleDragging then
       toggleDragging = false
       toggleBtn:StopMovingOrSizing()
-      save_btn_pos(toggleBtn)
+      -- save_btn_pos(toggleBtn)
     end
   end)
   -- 1.12 handlers use 'this'
@@ -405,7 +405,7 @@ local function make_toggle_button()
     if m and m.ReyWinners and m.ReyWinners.toggle then m.ReyWinners.toggle() end
   end)
   toggleBtn:SetScript("OnDragStart", function() this:StartMoving() end)
-  toggleBtn:SetScript("OnDragStop",  function() this:StopMovingOrSizing(); save_btn_pos(this) end)
+  -- toggleBtn:SetScript("OnDragStop",  function() this:StopMovingOrSizing(); save_btn_pos(toggleBtn) end)
 end
 -- ==========================================================
 -- ===== Import/Export popup (1.12-safe) =====
