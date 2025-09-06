@@ -176,7 +176,6 @@ function M.new(
       return result
     end
     local function is_rey_roll(entry)
-      print(entry.roll_type)
       if not entry then return false end
       local REY = m.Types.RollType.Rey
       -- Preferred: use explicit roll type (set by make_roll)
@@ -214,8 +213,6 @@ function M.new(
       if m and m.ReyWinners and m.ReyWinners.add_winner and getn(winner_rolls) > 0 then
         for i = 1, getn(winner_rolls) do
           local w = winner_rolls[i]
-          print(w)
-          print(w.player)
           if is_rey_roll(w) and w.player and w.player.name then
             m.ReyWinners.add_winner(w.player.name)
           end
