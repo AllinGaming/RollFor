@@ -3,7 +3,7 @@
 ## Author: Obszczymucha
 ## Version: 4.6.5
 ## Notes: An automated item roller with soft ressing support via raidres.fly.dev.
-## SavedVariables: RollForDb
+## SavedVariables: RollForDb, CSRModData
 ## SavedVariablesPerCharacter: RollForCharDb
 
 libs\vanilla\LibStub\LibStub.lua
@@ -13,6 +13,7 @@ src\vanilla\backport.lua
 src\vanilla\compat.lua
 src\vanilla\Json.lua
 
+src\CSRMod.lua
 src\modules.lua
 src\DebugBuffer.lua
 src\Module.lua
