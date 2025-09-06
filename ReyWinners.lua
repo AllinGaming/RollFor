@@ -4,7 +4,6 @@ m.ReyWinners    = m.ReyWinners or {}
 
 ReyWinnersDB    = ReyWinnersDB or {}  -- SavedVariables (declared in TOC)
 local RW        = m.ReyWinners
-
 -- -------- utils (1.12 safe) --------
 local function trim(s)           return (string.gsub(s or "", "^%s*(.-)%s*$", "%1")) end
 local function ucfirst(s)
@@ -44,6 +43,60 @@ local function persist()
   ReyWinnersDB.names = out
 end
 -- -----------------------------------
+-- Build a sorted array of names from the set
+local function build_sorted_names()
+  local arr, k = {}, 0
+  for n, v in pairs(RW._set) do
+    if v then k = k + 1; arr[k] = n end
+  end
+  table.sort(arr)
+  return arr, k
+end
+-- Split "a, b, c" into array (1.12-safe)
+local function split_csv(s)
+  s = tostring(s or "")
+  local res, k, start = {}, 0, 1
+  while true do
+    local p = string.find(s, ",", start)
+    local chunk
+    if p then
+      chunk = string.sub(s, start, p - 1)
+      start = p + 1
+    else
+      chunk = string.sub(s, start)
+    end
+    chunk = (string.gsub(chunk, "^%s*(.-)%s*$", "%1"))
+    if chunk ~= "" then k = k + 1; res[k] = chunk end
+    if not p then break end
+  end
+  return res, k
+end
+-- Import from a CSV string
+function RW.import_csv(s)
+  local list, n = split_csv(s)
+  local added = 0
+  for i = 1, n do
+    if RW.add_winner(list[i]) then added = added + 1 end
+  end
+  DEFAULT_CHAT_FRAME:AddMessage("|cffffff00[Rey]|r imported "..added.." name(s).")
+end
+-- Join array into "name1, name2, name3" (1.12-safe)
+local function names_to_csv(arr, n)
+  local out = ""
+  for i = 1, (n or (table.getn and table.getn(arr)) or 0) do
+    local s = arr[i]
+    if s and s ~= "" then
+      if out == "" then out = s else out = out .. ", " .. s end
+    end
+  end
+  return out
+end
+
+-- Return CSV string of current names
+function RW.export_csv()
+  local arr, n = build_sorted_names()
+  return names_to_csv(arr, n)
+end
 
 -- ---------- public API -------------
 function RW.add_winner(name)
@@ -83,21 +136,69 @@ function RW.has(name)
 end
 -- -------------- UI -----------------
 local frame, edit, addBtn, rmBtn, listText
+local listChild
+local rows = {}        -- row frames reused
 local make  -- <- forward declaration so it's an upvalue
+-- function RW.update_list_ui()
+--   if not frame or not listText then
+--     make() 
+--     if not frame or not listText then return end
+--   end
+--   local lines, i = "", 0
+--   for n, v in pairs(RW._set) do
+--     if v then
+--       if i == 0 then lines = n else lines = lines .. "\n" .. n end
+--       i = i + 1
+--     end
+--   end
+--   if lines == "" then lines = "|cff999999(none)|r" end
+--   listText:SetText(lines)
+-- end
 function RW.update_list_ui()
-  if not frame or not listText then
-    make() 
-    if not frame or not listText then return end
+  if not frame or not listChild then
+    make()
+    if not frame or not listChild then return end
   end
-  local lines, i = "", 0
-  for n, v in pairs(RW._set) do
-    if v then
-      if i == 0 then lines = n else lines = lines .. "\n" .. n end
-      i = i + 1
+
+  -- build sorted names
+  local arr, n = build_sorted_names()
+  -- ensure enough rows
+  for i = 1, n do
+    local row = rows[i]
+    if not row then
+      row = CreateFrame("Frame", "RollForReyRow"..i, listChild)
+      row:SetWidth(200); row:SetHeight(18)
+      if i == 1 then
+        row:SetPoint("TOPLEFT", listChild, "TOPLEFT", 0, 0)
+      else
+        row:SetPoint("TOPLEFT", rows[i-1], "BOTTOMLEFT", 0, -2)
+      end
+      -- name text
+      local nameFS = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+      nameFS:SetJustifyH("LEFT"); nameFS:SetPoint("LEFT", row, "LEFT", 0, 0)
+      row.nameFS = nameFS
+      -- remove button
+      local rm = CreateFrame("Button", "RollForReyRowRm"..i, row, "UIPanelButtonTemplate")
+      rm:SetWidth(20); rm:SetHeight(16)
+      rm:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+      rm:SetText("X")
+      row.rm = rm
+      rows[i] = row
     end
+    local nm = arr[i]
+    row.nameFS:SetText(nm)
+    -- capture name in closure (1.12 ok)
+    local name_for_btn = nm
+    row.rm:SetScript("OnClick", function() RW.remove_winner(name_for_btn) end)
+    row:Show()
   end
-  if lines == "" then lines = "|cff999999(none)|r" end
-  listText:SetText(lines)
+  -- hide extra rows
+  for j = n + 1, (table.getn and table.getn(rows)) or 0 do
+    if rows[j] then rows[j]:Hide() end
+  end
+  -- grow container so scrolling works
+  local total_h = n > 0 and (n * 20) or 20
+  listChild:SetHeight(total_h)
 end
 
 local function make_button(name, parent, label, x, y, onclick)
@@ -158,20 +259,37 @@ function make()
     RW.remove_winner(edit:GetText())
     edit:SetText("")
   end)
+  local exportBtn = make_button("RollForReyExportBtn", frame, "Export...", 18, -70, function()
+    RW.open_export_popup()
+  end)
+  local importBtn = make_button("RollForReyImportBtn", frame, "Import...", 96, -70, function()
+    RW.open_import_popup()
+  end)
 
-  -- scroll + list
+  -- scroll + list container
   local scroll = CreateFrame("ScrollFrame", "RollForReyScroll", frame, "UIPanelScrollFrameTemplate")
   scroll:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -100)
   scroll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -32, 20)
 
   local child = CreateFrame("Frame", "RollForReyScrollChild", scroll)
-  child:SetWidth(200); child:SetHeight(1) -- height grows with text
+  child:SetWidth(200); child:SetHeight(1)
   scroll:SetScrollChild(child)
 
-  listText = child:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-  listText:SetJustifyH("LEFT"); listText:SetJustifyV("TOP")
-  listText:SetPoint("TOPLEFT", child, "TOPLEFT", 0, 0)
-  listText:SetText("")
+  listChild = child
+
+  -- -- scroll + list
+  -- local scroll = CreateFrame("ScrollFrame", "RollForReyScroll", frame, "UIPanelScrollFrameTemplate")
+  -- scroll:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -100)
+  -- scroll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -32, 20)
+
+  -- local child = CreateFrame("Frame", "RollForReyScrollChild", scroll)
+  -- child:SetWidth(200); child:SetHeight(1) -- height grows with text
+  -- scroll:SetScrollChild(child)
+
+  -- listText = child:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+  -- listText:SetJustifyH("LEFT"); listText:SetJustifyV("TOP")
+  -- listText:SetPoint("TOPLEFT", child, "TOPLEFT", 0, 0)
+  -- listText:SetText("")
 
   frame:Hide()
 end
@@ -201,6 +319,17 @@ SlashCmdList["REYWIN"] = function(msg)
   if msg == "" or msg == "show" then RW.toggle(); return end
   if msg == "hide"      then RW.hide(); return end
   if msg == "clear"     then RW.clear(); return end
+  if cmd == "export" then
+    RW.open_export_popup()
+    return
+  elseif cmd == "import" then
+    if rest and rest ~= "" then
+      RW.import_csv(rest)
+    else
+      RW.open_import_popup()
+    end
+    return
+  end
 
   local cmd, rest = string.match(msg, "^(%S+)%s*(.-)$")
   if cmd == "add" then
@@ -255,8 +384,22 @@ local function make_toggle_button()
   set_point_from_db(toggleBtn, ReyWinnersDB and ReyWinnersDB.toggle)
   toggleBtn:SetMovable(true)
   toggleBtn:EnableMouse(true)
-  toggleBtn:RegisterForDrag("LeftButton")
-
+  -- put this near make_toggle_button's locals
+  local toggleDragging = false
+  --toggleBtn:RegisterForDrag("LeftButton")
+  toggleBtn:SetScript("OnMouseDown", function()
+    if arg1 == "RightButton" and IsShiftKeyDown() then
+      toggleDragging = true
+      this:StartMoving()
+    end
+  end)
+  toggleBtn:SetScript("OnMouseUp", function()
+    if toggleDragging then
+      toggleDragging = false
+      toggleBtn:StopMovingOrSizing()
+      save_btn_pos(toggleBtn)
+    end
+  end)
   -- 1.12 handlers use 'this'
   toggleBtn:SetScript("OnClick", function()
     if m and m.ReyWinners and m.ReyWinners.toggle then m.ReyWinners.toggle() end
@@ -265,6 +408,77 @@ local function make_toggle_button()
   toggleBtn:SetScript("OnDragStop",  function() this:StopMovingOrSizing(); save_btn_pos(this) end)
 end
 -- ==========================================================
+-- ===== Import/Export popup (1.12-safe) =====
+local ioFrame, ioEdit, ioTitle, ioMode
+
+local function make_io_popup()
+  if ioFrame then return end
+  ioFrame = CreateFrame("Frame", "RollForReyIO", UIParent)
+  ioFrame:SetWidth(380); ioFrame:SetHeight(220)
+  ioFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
+  ioFrame:SetBackdrop({
+    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+    tile = true, tileSize = 32, edgeSize = 32,
+    insets = {left=8,right=8,top=8,bottom=8}
+  })
+  ioFrame:Hide()
+
+  ioTitle = ioFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+  ioTitle:SetPoint("TOP", 0, -12)
+  ioTitle:SetText("Rey Winners I/O")
+
+  local close = CreateFrame("Button", nil, ioFrame, "UIPanelCloseButton")
+  close:SetPoint("TOPRIGHT", ioFrame, "TOPRIGHT", -6, -6)
+
+  ioEdit = CreateFrame("EditBox", "RollForReyIOEdit", ioFrame, "InputBoxTemplate")
+  ioEdit:SetPoint("TOPLEFT", ioFrame, "TOPLEFT", 16, -46)
+  ioEdit:SetWidth(348); ioEdit:SetHeight(20)
+  ioEdit:SetAutoFocus(false)
+  ioEdit:SetMultiLine(true)   -- 1.12: multi-line works via ScrollingMessageFrame, but an InputBox is fine for short CSV
+  ioEdit:SetText("")
+
+  local importBtn = CreateFrame("Button", nil, ioFrame, "UIPanelButtonTemplate")
+  importBtn:SetWidth(70); importBtn:SetHeight(20)
+  importBtn:SetPoint("BOTTOMLEFT", ioFrame, "BOTTOMLEFT", 16, 16)
+  importBtn:SetText("Import")
+  importBtn:SetScript("OnClick", function()
+    RW.import_csv(ioEdit:GetText())
+  end)
+
+  local exportBtn = CreateFrame("Button", nil, ioFrame, "UIPanelButtonTemplate")
+  exportBtn:SetWidth(70); exportBtn:SetHeight(20)
+  exportBtn:SetPoint("LEFT", importBtn, "RIGHT", 8, 0)
+  exportBtn:SetText("Export")
+  exportBtn:SetScript("OnClick", function()
+    ioEdit:SetText(RW.export_csv())
+    ioEdit:HighlightText()
+    ioEdit:SetFocus()
+  end)
+
+  local doneBtn = CreateFrame("Button", nil, ioFrame, "UIPanelButtonTemplate")
+  doneBtn:SetWidth(70); doneBtn:SetHeight(20)
+  doneBtn:SetPoint("RIGHT", ioFrame, "BOTTOMRIGHT", -16, 16)
+  doneBtn:SetText("Close")
+  doneBtn:SetScript("OnClick", function() ioFrame:Hide() end)
+end
+
+function RW.open_import_popup()
+  make_io_popup()
+  ioTitle:SetText("Import Rey Winners (comma-separated)")
+  ioEdit:SetText("")
+  ioFrame:Show()
+end
+
+function RW.open_export_popup()
+  make_io_popup()
+  ioTitle:SetText("Export Rey Winners")
+  ioEdit:SetText(RW.export_csv())
+  ioEdit:HighlightText()
+  ioEdit:SetFocus()
+  ioFrame:Show()
+end
+-- ============================================
 
 -- init database -> set
 if not ReyWinnersDB.names then ReyWinnersDB.names = {} end
