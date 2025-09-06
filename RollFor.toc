@@ -3,7 +3,7 @@
 ## Author: Obszczymucha
 ## Version: 4.6.5
 ## Notes: An automated item roller with soft ressing support via raidres.fly.dev.
-## SavedVariables: RollForDb, CSRModData
+## SavedVariables: RollForDb, CSRModData, ReyWinnersDB
 ## SavedVariablesPerCharacter: RollForCharDb
 
 libs\vanilla\LibStub\LibStub.lua
@@ -94,3 +94,4 @@ src\ModernLootFrameSkin.lua
 src\OgLootFrameSkin.lua
 
 main.lua
+ReyWinners.lua
