@@ -120,8 +120,9 @@ function M.new(
     local mainspec_roll_count = count_elements( mainspec_rolls )
     local offspec_roll_count = count_elements( offspec_rolls )
     local tmog_roll_count = count_elements( tmog_rolls )
+    local rey_roll_count = count_elements( reyspec_rolls )
 
-    if mainspec_roll_count == 0 and offspec_roll_count == 0 and tmog_roll_count == 0 then
+    if mainspec_roll_count == 0 and offspec_roll_count == 0 and tmog_roll_count == 0 and rey_roll_count == 0 then
       on_rolling_finished( item, item_count, {} )
       return
     end
