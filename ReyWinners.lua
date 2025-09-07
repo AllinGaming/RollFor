@@ -199,6 +199,11 @@ function RW.update_list_ui()
   -- grow container so scrolling works
   local total_h = n > 0 and (n * 20) or 20
   listChild:SetHeight(total_h)
+    -- Recompute scrollable range (1.12)
+  local s = getglobal("RollForReyScroll")
+  if s and s.UpdateScrollChildRect then
+    s:UpdateScrollChildRect()
+  end
 end
 
 local function make_button(name, parent, label, x, y, onclick)
@@ -272,9 +277,17 @@ function make()
   scroll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -32, 20)
 
   local child = CreateFrame("Frame", "RollForReyScrollChild", scroll)
-  child:SetWidth(200); child:SetHeight(1)
+  child:SetWidth(200)
+  child:SetHeight(12000)
   scroll:SetScrollChild(child)
+  -- -- Mouse wheel (1.12 style)
+  -- scroll:EnableMouseWheel(true)
+  -- scroll:SetScript("OnMouseWheel", function()
+  --   ScrollFrameTemplate_OnMouseWheel(this, arg1)
+  -- end)
 
+  -- Ensure scroll range recalculates
+  scroll:SetScript("OnShow", function() this:UpdateScrollChildRect() end)
   listChild = child
 
   -- -- scroll + list
