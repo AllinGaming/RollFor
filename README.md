@@ -15,5 +15,5 @@ The addon will tell you the status of SR import.
 Hovering over the minimap icon will tell you who did not soft-res.
 
 ### csr
---
+---
 do /importcsrmod
