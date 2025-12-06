@@ -1,6 +1,6 @@
 ## Roll For SoM
 ---
-## Ignore SR and allow everyone to roll
+### Ignore SR and allow everyone to roll
 If the item is SRed, the addon will only watch rolls for players who SRed. However, if you want everyone to roll, even if the item is SRed, use /arf instead of /rf. "arf" stands for "All Roll For".
 ---
 ### Create a Soft Res list at https://raidres.fly.dev (1.12.1) or https://softres.it (2.5.2).
