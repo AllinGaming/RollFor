@@ -29,6 +29,7 @@ src\RollingLogicUtils.lua
 src\DroppedLoot.lua
 src\DroppedLootAnnounce.lua
 src\TradeTracker.lua
+src\RaidExport.lua
 src\SoftResDataTransformer.lua
 src\SoftRes.lua
 src\SoftResAwardedLootDecorator.lua

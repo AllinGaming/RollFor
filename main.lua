@@ -243,6 +243,8 @@ local function create_components()
     M.master_loot_candidates,
     M.softres,
     M.loot_list,
+    db( "roll_controller" ),
+    M.player_info,
     M.config,
     M.rolling_popup,
     M.loot_award_popup,
@@ -263,6 +265,8 @@ local function create_components()
   ---@type AutoLoot
   M.auto_loot = m.AutoLoot.new( M.loot_list, M.api, db( "auto_loot" ), M.config, M.player_info )
 
+  M.raid_export = m.RaidExport.new( M.api, M.ace_timer, M.group_roster, M.matched_name_softres, M.db )
+
   ---@type DroppedLootAnnounce
   M.dropped_loot_announce = m.DroppedLootAnnounce.new(
     M.loot_list,
@@ -276,7 +280,15 @@ local function create_components()
   )
 
   -- TODO: Add type.
-  M.softres_gui = m.SoftResGui.new( M.api, M.import_encoded_softres_data, M.softres_check, M.softres, clear_data, M.dropped_loot_announce.reset )
+  M.softres_gui = m.SoftResGui.new(
+    M.api,
+    M.import_encoded_softres_data,
+    M.softres_check,
+    M.softres,
+    clear_data,
+    M.dropped_loot_announce.reset,
+    M.raid_export.export
+  )
 
   -- TODO: Add type.
   M.trade_tracker = m.TradeTracker.new( M.ace_timer, M.chat, trade_complete_callback )

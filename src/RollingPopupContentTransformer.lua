@@ -21,21 +21,26 @@ local function button_definition( label, width )
 end
 
 M.button_definitions = {
+  [ "Award98" ] = button_definition( "Award 98", 95 ),
   [ "AwardOther" ] = button_definition( "...", 40 ),
   [ "AwardWinner" ] = button_definition( "Award", 75 ),
   [ "Cancel" ] = button_definition( "Cancel", 80 ),
   [ "Close" ] = button_definition( "Close", 70 ),
   [ "FinishEarly" ] = button_definition( "Finish early", 110 ),
+  [ "GiveToEnchanter" ] = button_definition( "To enchanter", 110 ),
   [ "InstaRaidRoll" ] = button_definition( "Raid roll", 90 ),
   [ "RaidRoll" ] = button_definition( "Raid roll", 90 ),
   [ "RaidRollAgain" ] = button_definition( "Raid roll again", 130 ),
-  [ "Roll" ] = button_definition( "Roll", 60 )
+  [ "Roll" ] = button_definition( "Roll", 60 ),
+  [ "SelfLoot" ] = button_definition( "Self loot", 90 ),
+  [ "AssignEnchanter" ] = button_definition( "Assign ench.", 100 )
 }
 
 local top_padding = 11
 
 ---@alias RollingPopupButtonType
 ---| "Roll"
+---| "Award98"
 ---| "AwardWinner"
 ---| "AwardOther"
 ---| "RaidRoll"
@@ -44,6 +49,9 @@ local top_padding = 11
 ---| "Close"
 ---| "FinishEarly"
 ---| "Cancel"
+---| "SelfLoot"
+---| "AssignEnchanter"
+---| "GiveToEnchanter"
 
 ---@class RollingPopupContentTransformer
 ---@field transform fun( data: RollingPopupData ): table
@@ -258,7 +266,7 @@ function M.new( config )
 
     add_item( content, data.item_link, data.item_tooltip_link, data.item_texture, data.item_count )
 
-    if not data.seconds_left and getn( data.rolls ) == 0 then
+    if not data.seconds_left and getn( data.rolls ) == 0 and getn( data.winners ) == 0 then
       add_text( content, "Rolling finished. No one rolled.", top_padding )
     else
       add_rolls( content, data.rolls )

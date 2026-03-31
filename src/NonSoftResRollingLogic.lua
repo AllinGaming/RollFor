@@ -365,10 +365,12 @@ function M.new(
       end
     end
 
+    local total_reyspec_rolls = count_elements( reyspec_rolls )
     local total_mainspec_rolls = count_elements( mainspec_rolls )
     local total_offspec_rolls = count_elements( offspec_rolls )
+    local total_tmog_rolls = count_elements( tmog_rolls )
 
-    if total_mainspec_rolls + total_offspec_rolls == 0 then
+    if total_reyspec_rolls + total_mainspec_rolls + total_offspec_rolls + total_tmog_rolls == 0 then
       chat.info( "No rolls found." )
       return
     end

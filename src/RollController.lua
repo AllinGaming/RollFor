@@ -55,6 +55,9 @@ local hl = m.colors.hl
 ---@param ml_candidates MasterLootCandidates
 ---@param softres GroupAwareSoftRes
 ---@param loot_list SoftResLootList
+---@param db table
+---@param player_info PlayerInfo
+---@param config Config
 ---@param rolling_popup RollingPopup
 ---@param loot_award_popup LootAwardPopup
 ---@param player_selection_frame MasterLootCandidateSelectionFrame
@@ -62,6 +65,8 @@ function M.new(
     ml_candidates,
     softres,
     loot_list,
+    db,
+    player_info,
     config,
     rolling_popup,
     loot_award_popup,
@@ -72,6 +77,9 @@ function M.new(
   local ml_confirmation_data = nil ---@type MasterLootConfirmationData?
   local currently_displayed_item = nil ---@type Item?
   local rolling_popup_data = {} ---@type RollingPopupData[]
+  local pending_tmog_trade_instruction = nil ---@type table?
+  local show_player_selection_frame
+  local add_quick_loot_buttons
 
   ---@param item_id ItemId?
   local function get_roll_tracker( item_id )
@@ -113,6 +121,13 @@ function M.new(
   ---@param item MasterLootDistributableItem
   local function award_confirmed( player, item )
     notify_subscribers( "award_confirmed", { player = player, item = item } )
+  end
+
+  ---@param player ItemCandidate|Winner
+  ---@param item MasterLootDistributableItem
+  local function award_without_confirmation( player, item )
+    player_selection_frame.hide()
+    award_confirmed( player, item )
   end
 
   ---@class WinnerWithAwardCallback
@@ -269,6 +284,10 @@ function M.new(
       loot_award_popup.hide()
     end
 
+    if pending_tmog_trade_instruction and pending_tmog_trade_instruction.item_id == item.id then
+      pending_tmog_trade_instruction = nil
+    end
+
     notify_subscribers( "award_aborted", { item = item } )
 
     if rolling_popup_data[ item.id ] then
@@ -290,7 +309,8 @@ function M.new(
   ---@param player ItemCandidate|Winner
   ---@param item MasterLootDistributableItem
   ---@param strategy_type RollingStrategyType
-  local function show_master_loot_confirmation( player, item, strategy_type )
+  ---@param on_confirm fun( candidate: ItemCandidate, item: MasterLootDistributableItem )?
+  local function show_master_loot_confirmation( player, item, strategy_type, on_confirm )
     local slot = loot_list.get_slot( item.id )
     local candidate = slot and ml_candidates.find( slot, player.name )
 
@@ -307,7 +327,10 @@ function M.new(
       winners = winners,
       receiver = candidate,
       strategy_type = strategy_type,
-      confirm_fn = function() award_confirmed( candidate, item ) end,
+      confirm_fn = function()
+        if on_confirm then on_confirm( candidate, item ) end
+        award_confirmed( candidate, item )
+      end,
       abort_fn = function() award_aborted( item ) end
     }
 
@@ -357,11 +380,7 @@ function M.new(
             }
           end )
 
-        player_selection_frame.show( players )
-        local frame = player_selection_frame.get_frame()
-        frame:ClearAllPoints()
-        local margin = config.classic_look() and 0 or -5
-        frame:SetPoint( "TOP", rolling_popup.get_frame(), "BOTTOM", 0, margin )
+        show_player_selection_frame( players )
       end, should_display_callback ) )
   end
 
@@ -400,6 +419,7 @@ function M.new(
   local function preview_non_soft_ressed_items( buttons, item, item_count, dropped_item, candidate_count, candidates )
     add_roll_button( buttons, RS.NormalRoll, item, item_count )
     add_raid_roll_button( buttons, "InstaRaidRoll", item, item_count )
+    add_quick_loot_buttons( buttons, dropped_item, RS.NormalRoll, candidates )
 
     if candidate_count > 0 then add_award_other_button( dropped_item, buttons, candidates, {}, RS.NormalRoll ) end
 
@@ -430,6 +450,7 @@ function M.new(
   ---@param candidates ItemCandidate[]
   local function preview_hard_ressed_item( buttons, item, item_count, dropped_item, candidate_count, candidates )
     add_roll_button( buttons, RS.SoftResRoll, item, item_count )
+    add_quick_loot_buttons( buttons, dropped_item, RS.SoftResRoll, candidates )
 
     if candidate_count > 0 then add_award_other_button( dropped_item, buttons, candidates, {}, RS.SoftResRoll ) end
 
@@ -461,6 +482,244 @@ function M.new(
     end, should_display_callback ) )
   end
 
+  ---@param buttons RollingPopupButtonWithCallback[]
+  ---@param callback fun()
+  local function add_award_98_button( buttons, callback )
+    table.insert( buttons, button( "Award98", function()
+      player_selection_frame.hide()
+      callback()
+    end ) )
+  end
+
+  ---@param players MasterLootCandidate[]
+  function show_player_selection_frame( players )
+    player_selection_frame.show( players )
+    local frame = player_selection_frame.get_frame()
+    frame:ClearAllPoints()
+    local margin = config.classic_look() and 0 or -5
+    frame:SetPoint( "TOP", rolling_popup.get_frame(), "BOTTOM", 0, margin )
+  end
+
+  local function refresh_current_popup()
+    if not currently_displayed_item then return end
+    local data = rolling_popup_data[ currently_displayed_item.id ]
+    if not data then return end
+
+    rolling_popup:show()
+    rolling_popup:refresh( data )
+  end
+
+  ---@param candidate ItemCandidate
+  local function assign_enchanter( candidate )
+    db.enchanter_name = candidate.name
+    db.enchanter_class = candidate.class
+    info( string.format( "Enchanter assigned to %s.", hl( candidate.name ) ) )
+    player_selection_frame.hide()
+    refresh_current_popup()
+  end
+
+  ---@param slot number?
+  ---@return ItemCandidate?
+  local function get_self_candidate( slot )
+    if not slot then return nil end
+    return ml_candidates.find( slot, player_info.get_name() )
+  end
+
+  ---@param slot number?
+  ---@return ItemCandidate?
+  local function get_enchanter_candidate( slot )
+    if not slot or not db.enchanter_name then return nil end
+    return ml_candidates.find( slot, db.enchanter_name )
+  end
+
+  ---@param dropped_item MasterLootDistributableItem?
+  ---@param buttons RollingPopupButtonWithCallback[]
+  ---@param strategy_type RollingStrategyType
+  local function add_self_loot_button( dropped_item, buttons, strategy_type )
+    if not dropped_item then return end
+
+    table.insert( buttons, button( "SelfLoot", function()
+      local slot = loot_list.get_slot( dropped_item.id )
+      local candidate = get_self_candidate( slot )
+      if candidate then
+        award_without_confirmation( candidate, dropped_item )
+      end
+    end, function()
+      if not should_display_callback() then return false end
+      local slot = currently_displayed_item and loot_list.get_slot( currently_displayed_item.id )
+      return get_self_candidate( slot ) and true or false
+    end ) )
+  end
+
+  ---@param dropped_item MasterLootDistributableItem?
+  ---@param buttons RollingPopupButtonWithCallback[]
+  ---@param candidates ItemCandidate[]
+  local function add_assign_enchanter_button( dropped_item, buttons, candidates )
+    if not dropped_item then return end
+
+    table.insert( buttons, button( "AssignEnchanter", function()
+      ---@type MasterLootCandidate[]
+      local players = m.map( candidates,
+        ---@param candidate ItemCandidate
+        function( candidate )
+          return {
+            name = candidate.name,
+            class = candidate.class,
+            is_winner = db.enchanter_name == candidate.name,
+            confirm_fn = function()
+              assign_enchanter( candidate )
+            end
+          }
+        end )
+
+      show_player_selection_frame( players )
+    end, function()
+      return should_display_callback() and getn( candidates ) > 0 or false
+    end ) )
+  end
+
+  ---@param dropped_item MasterLootDistributableItem?
+  ---@param buttons RollingPopupButtonWithCallback[]
+  ---@param strategy_type RollingStrategyType
+  local function add_give_to_enchanter_button( dropped_item, buttons, strategy_type )
+    if not dropped_item then return end
+
+    table.insert( buttons, button( "GiveToEnchanter", function()
+      local slot = loot_list.get_slot( dropped_item.id )
+      local candidate = get_enchanter_candidate( slot )
+      if candidate then
+        award_without_confirmation( candidate, dropped_item )
+      end
+    end, function()
+      if not should_display_callback() then return false end
+      local slot = currently_displayed_item and loot_list.get_slot( currently_displayed_item.id )
+      return get_enchanter_candidate( slot ) and true or false
+    end ) )
+  end
+
+  ---@param buttons RollingPopupButtonWithCallback[]
+  ---@param dropped_item MasterLootDistributableItem?
+  ---@param strategy_type RollingStrategyType
+  ---@param candidates ItemCandidate[]
+  function add_quick_loot_buttons( buttons, dropped_item, strategy_type, candidates )
+    add_self_loot_button( dropped_item, buttons, strategy_type )
+    add_give_to_enchanter_button( dropped_item, buttons, strategy_type )
+    add_assign_enchanter_button( dropped_item, buttons, candidates )
+  end
+
+  ---@param winners Winner[]
+  ---@return Winner?
+  local function find_primary_non_tmog_winner( winners )
+    for _, winner in ipairs( winners ) do
+      if winner.roll_type ~= m.Types.RollType.Transmog then
+        return winner
+      end
+    end
+  end
+
+  ---@param winners Winner[]
+  ---@return Winner?
+  local function find_top_tmog_winner( winners )
+    local top_winner = nil
+
+    for _, winner in ipairs( winners ) do
+      if winner.roll_type == m.Types.RollType.Transmog then
+        if not top_winner or (winner.winning_roll or 0) > (top_winner.winning_roll or 0) or
+            ((winner.winning_roll or 0) == (top_winner.winning_roll or 0) and winner.name < top_winner.name) then
+          top_winner = winner
+        end
+      end
+    end
+
+    return top_winner
+  end
+
+  ---@param rolls RollData[]
+  ---@return RollData[]
+  local function get_sorted_tmog_rolls( rolls )
+    local tmog_rolls = {}
+
+    for _, roll in ipairs( rolls ) do
+      if roll.roll_type == m.Types.RollType.Transmog and roll.roll then
+        table.insert( tmog_rolls, roll )
+      end
+    end
+
+    table.sort( tmog_rolls, function( a, b )
+      if a.roll == b.roll then return a.player_name < b.player_name end
+      return a.roll > b.roll
+    end )
+
+    return tmog_rolls
+  end
+
+  ---@param item_link string
+  ---@param awarded_player_name string
+  ---@param winners Winner[]
+  ---@param tmog_rolls RollData[]
+  ---@return string?
+  local function build_tmog_trade_instruction( item_link, awarded_player_name, winners, tmog_rolls )
+    local primary_winner = find_primary_non_tmog_winner( winners )
+    if primary_winner then
+      return string.format( "Please trade %s to %s.", item_link, primary_winner.name )
+    end
+
+    for _, roll in ipairs( tmog_rolls ) do
+      if roll.player_name ~= awarded_player_name then
+        return string.format( "Please trade %s to %s.", item_link, roll.player_name )
+      end
+    end
+
+    if db.enchanter_name and db.enchanter_name ~= "" then
+      return string.format( "Please trade %s to %s.", item_link, db.enchanter_name )
+    end
+  end
+
+  ---@param item_id ItemId
+  ---@param dropped_item MasterLootDistributableItem?
+  ---@param strategy_type RollingStrategyType
+  ---@param winners Winner[]
+  ---@param rolls RollData[]
+  ---@return fun()?
+  local function find_98_award_callback( item_id, dropped_item, strategy_type, winners, rolls )
+    if not dropped_item then return end
+
+    local slot = loot_list.get_slot( item_id )
+    if not slot then return end
+
+    local tmog_rolls = get_sorted_tmog_rolls( rolls )
+    local top_tmog_roll = tmog_rolls[ 1 ]
+    local candidate = top_tmog_roll and ml_candidates.find( slot, top_tmog_roll.player_name )
+
+    if not top_tmog_roll or not candidate then
+      local top_tmog_winner = find_top_tmog_winner( winners )
+      if not top_tmog_winner then return end
+
+      top_tmog_roll = {
+        player_name = top_tmog_winner.name,
+        player_class = top_tmog_winner.class,
+        roll_type = top_tmog_winner.roll_type,
+        roll = top_tmog_winner.winning_roll
+      }
+      candidate = ml_candidates.find( slot, top_tmog_winner.name )
+    end
+
+    if not candidate then return end
+
+    return function()
+      local instruction = build_tmog_trade_instruction( dropped_item.link, candidate.name, winners, tmog_rolls )
+      show_master_loot_confirmation( candidate, dropped_item, strategy_type, function()
+        if instruction then
+          pending_tmog_trade_instruction = {
+            item_id = dropped_item.id,
+            player_name = candidate.name,
+            message = instruction
+          }
+        end
+      end )
+    end
+  end
+
   ---@param soft_ressers RollingPlayer[]
   ---@param item Item
   ---@param item_count number
@@ -488,6 +747,8 @@ function M.new(
       add_award_winner_button( buttons, winners[ 1 ].award_callback )
       winners[ 1 ].award_callback = nil
     end
+
+    add_quick_loot_buttons( buttons, dropped_item, RS.SoftResRoll, candidates )
 
     if candidate_count > 0 then add_award_other_button( dropped_item, buttons, candidates, winners, RS.SoftResRoll ) end
 
@@ -519,6 +780,7 @@ function M.new(
   ---@param candidates ItemCandidate[]
   local function preview_sr_items_not_equal_to_item_count( soft_ressers, item, item_count, dropped_item, buttons, candidate_count, candidates )
     add_roll_button( buttons, RS.SoftResRoll, item, item_count )
+    add_quick_loot_buttons( buttons, dropped_item, RS.SoftResRoll, candidates )
 
     if candidate_count > 0 then add_award_other_button( dropped_item, buttons, candidates, {}, RS.SoftResRoll ) end
 
@@ -587,6 +849,7 @@ function M.new(
     end
 
     add_raid_roll_again_button( buttons, item, data.item_count, strategy_type )
+    add_quick_loot_buttons( buttons, dropped_item, strategy_type, candidates )
 
     if candidate_count > 0 then add_award_other_button( dropped_item, buttons, candidates, winners, strategy_type ) end
 
@@ -636,12 +899,19 @@ function M.new(
       end
     )
 
+    local award_98_callback = find_98_award_callback( item.id, dropped_item, current_iteration.rolling_strategy, data.winners, current_iteration.rolls )
+
     if getn( winners ) == 1 and winners[ 1 ].award_callback then
       add_award_winner_button( buttons, winners[ 1 ].award_callback )
       winners[ 1 ].award_callback = nil
     end
 
+    if award_98_callback then
+      add_award_98_button( buttons, award_98_callback )
+    end
+
     add_raid_roll_button( buttons, "RaidRoll", item, data.item_count )
+    add_quick_loot_buttons( buttons, dropped_item, current_iteration.rolling_strategy, candidates )
 
     if candidate_count > 0 then add_award_other_button( dropped_item, buttons, candidates, winners, RS.NormalRoll ) end
 
@@ -699,12 +969,19 @@ function M.new(
         end
       )
 
+      local award_98_callback = find_98_award_callback( item.id, dropped_item, first_iteration.rolling_strategy, data.winners, first_iteration.rolls )
+
       if getn( winners ) == 1 and winners[ 1 ].award_callback then
         add_award_winner_button( buttons, winners[ 1 ].award_callback )
         winners[ 1 ].award_callback = nil
       end
 
+      if award_98_callback then
+        add_award_98_button( buttons, award_98_callback )
+      end
+
       add_raid_roll_button( buttons, "RaidRoll", item, data.item_count )
+      add_quick_loot_buttons( buttons, dropped_item, first_iteration.rolling_strategy, candidates )
       add_award_other_button( dropped_item, buttons, candidates, winners, first_iteration.rolling_strategy )
       add_close_button( buttons, "Finished" )
     end
@@ -1050,6 +1327,14 @@ function M.new(
   local function loot_awarded( item_id, item_link, player_name, player_class )
     local roll_tracker = get_roll_tracker( item_id )
     roll_tracker.loot_awarded( player_name, item_id )
+
+    if pending_tmog_trade_instruction and pending_tmog_trade_instruction.item_id == item_id then
+      if pending_tmog_trade_instruction.player_name == player_name and pending_tmog_trade_instruction.message then
+        m.api.SendChatMessage( pending_tmog_trade_instruction.message, "WHISPER", nil, player_name )
+      end
+
+      pending_tmog_trade_instruction = nil
+    end
 
     if ml_confirmation_data then
       ml_confirmation_data = nil
