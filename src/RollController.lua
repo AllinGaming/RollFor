@@ -1505,7 +1505,7 @@ function M.new(
 
     if not currently_displayed_item then
       m.err( "You found a bug!" )
-      m.info( string.format( "Please type: %s and send %s the screenshot on Discord. Thank you.", hl( "/rf debug show" ), hl( "Obszczymucha" ) ) )
+      m.info( string.format( "Please type: %s and send %s the screenshot on Discord. Thank you.", hl( "/rf debug show" ), hl( "Reyner" ) ) )
     end
   end
 
