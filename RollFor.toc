@@ -1,7 +1,7 @@
 ## Interface: 11200
 ## Title: RollFor
 ## Author: Reyner
-## Version: 5.0.0
+## Version: 5.0.1
 ## Notes: An automated item roller with soft ressing support via raidres.
 ## SavedVariables: RollForDb, CSRModData, ReyWinnersDB
 ## SavedVariablesPerCharacter: RollForCharDb
